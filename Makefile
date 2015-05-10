@@ -1,4 +1,4 @@
-all: hello task1
+all: task1
 	
 hello: 
 	mkdir build
@@ -7,7 +7,5 @@ hello:
 	rm -r build
 	
 task1:
-	mkdir build
 	yasm -f win32 task1.asm -o build/task1.o
 	gcc build/task1.o -o task1.exe
-	rm -r build
