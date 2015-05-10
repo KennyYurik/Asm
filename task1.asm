@@ -1,16 +1,19 @@
-extern _puts, _printf
+extern _puts, _printf, _exit
 
 section .data
 	error_str db "error", 10, 0
-	output_str db 1,2,3
+	buffer1 times 32 db 0
+	buffer2 times 50 db 0
+	buffer3 times 50 db 0
+	sign db 0
 	length db 0
 	flags db 0000b
 	; XXYZb 
 	; XX - sign of positive, 00 - nothing, 01 - ' ', 11 - '+'
 	; Y - fill char, 0 - ' ', 1 - '0'
 	; Z - align, 0 - right, 1 - left
-	int_format db "%d %x", 0
-	
+	str_format db "this->%s<-this", 0
+	int_format db "%d", 10, 0
 section .text
 global _main
 
@@ -18,7 +21,8 @@ _print_err:
 	push error_str
 	call _puts
 	add esp, 4
-	ret
+	push dword 1
+	call _exit
 
 _main:
 	mov edx, [esp + 4] ; argc
@@ -90,7 +94,7 @@ read_length:
 	ja _print_err
 	mov ax, bx
 	mov dx, 10
-	mul dx ; al * dx; res in eax
+	mul dx ; al * dx; res in dx:ax
 	add eax, ecx
 	cmp eax, 50
 	ja _print_err ; too long
@@ -101,13 +105,163 @@ read_length:
 	
 end_of_format_string:
 	mov [length], bl
+	
+check_minus:
+	mov al, [edi]
+	cmp al, 0
+	je _print_err
+	cmp al, '-'
+	jne check_correct
+	mov al, [sign]
+	xor al, 1
+	mov [sign], al
+	inc edi
+
+check_correct:
+	mov al, [edi]
+	cmp al, 0
+	je _print_err
+	mov ecx, 0
+	
+loop1:
+	cmp ecx, 33
+	je _print_err
 	xor eax, eax
-	mov al, [flags]
-	push eax
-	push ebx
-	push int_format
+	mov al, [edi + ecx]
+	cmp al, 0
+	je end_loop1
+	lea ebx, [eax - '0']
+	cmp ebx, 9
+	jbe this_is_digit
+	lea ebx, [eax - 'A']
+	cmp ebx, 5
+	jbe this_is_letter
+	jmp _print_err ; other char
+
+this_is_digit:
+	mov [edi + ecx], bl
+	inc ecx
+	jmp loop1
+	
+this_is_letter:
+	add bl, 10
+	mov [edi + ecx], bl
+	inc ecx
+	jmp loop1
+	
+end_loop1: ; length in ecx
+	cmp ecx, 32
+	jne not_dopcode
+	mov al, [edi]
+	cmp al, 8
+	jl not_dopcode
+	; make normal form
+	mov al, [sign]
+	xor al, 1
+	mov [sign], al
+	mov ebx, 0
+	
+loop2: ; from dopcode
+	mov al, [edi + ebx]
+	xor al, 1111b
+	mov [edi + ebx], al
+	inc ebx
+	cmp ebx, 32
+	jne loop2
+
+end_inverting: ; lets add 1 now
+	mov ebx, 31
+	
+loop3:
+	mov al, [edi + ebx]
+	inc al
+	mov [edi + ebx], al
+	cmp al, 16
+	jne not_dopcode
+	xor al, al
+	mov [edi + ebx], al
+	dec ebx
+	jmp loop3
+	
+not_dopcode: ; now decode from hex to dec. length = ecx
+	; move out hex to buffer1
+	dec ecx
+	xor ebx, ebx 
+	
+loop4:
+	mov al, [edi + ecx]
+	add al, '0'
+	mov [buffer1 + ebx], al
+	cmp ecx, 0
+	je end_loop4
+	dec ecx
+	inc ebx
+	jmp loop4
+	
+	
+end_loop4:	
+	xor ebx, ebx ; ebx - pos of current dec digit
+	
+loop6:
+	; al - ostatok
+	mov ecx, 31
+	xor eax, eax 
+	
+	loop5: ; div 10 
+		xor edx, edx
+		shl eax, 4
+		mov dl, [edi + ecx]
+		add al, dl
+		mov dh, 10
+		div dh ; ax / dh = al (ost ah)
+		mov [edi + ecx], al
+		mov al, ah
+		mov ah, 0
+		
+		push eax
+		push int_format
+		call _printf
+		add esp, 8
+		
+		cmp ecx, 0
+		je end_loop5
+		dec ecx
+		jmp loop5
+		
+	end_loop5:
+		add al, '0'
+		mov [buffer2 + ebx], al
+		inc ebx
+		cmp ebx, 50
+		jne loop6
+
+end_of_decoding: ;deleting trailing zeros		
+	push buffer2
+	push str_format
 	call _printf
-	add esp, 12
+	add esp, 4
+	
+	mov ecx, 49
+	mov al, [edi + ecx]
+	cmp al, 0
+	jne found_pos_not_zero
+	dec ecx
+	jmp end_of_decoding
+	
+found_pos_not_zero:
+	xor ebx, ebx
+	
+loop7:
+	mov al, [edi + ecx]
+	add al, '0'
+	mov [buffer3 + ebx], al
+	cmp ecx, 0
+	je end_loop7
+	dec ecx
+	inc ebx
+	jmp loop7
+	
+end_loop7:
 	
 	
 	ret ; main ret
