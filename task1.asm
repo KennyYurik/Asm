@@ -1,4 +1,4 @@
-extern _puts, _printf, _exit
+extern _puts, _printf, _exit, _malloc
 
 section .data
 	error_str db "error", 10, 0
@@ -13,7 +13,7 @@ section .data
 	; Y - fill char, 0 - ' ', 1 - '0'
 	; Z - align, 0 - right, 1 - left
 	str_format db "this->%s<-this", 0
-	int_format db "%d", 10, 0
+	int_format db "%d ", 0
 section .text
 global _main
 
@@ -186,62 +186,47 @@ loop3:
 not_dopcode: ; now decode from hex to dec. length = ecx
 	; move out hex to buffer1
 	dec ecx
-	xor ebx, ebx 
-	
-loop4:
-	mov al, [edi + ecx]
-	add al, '0'
-	mov [buffer1 + ebx], al
-	cmp ecx, 0
-	je end_loop4
-	dec ecx
-	inc ebx
-	jmp loop4
-	
-	
-end_loop4:	
-	xor ebx, ebx ; ebx - pos of current dec digit
+	mov esi, edi
+	add esi, ecx ; hex is [edi...esi]
+	push edi ; old begin
+	lea eax, [buffer2 + 50]
+	push eax ; end of buffer2
+	push buffer2
 	
 loop6:
 	; al - ostatok
-	mov ecx, 31
+	xor ecx, ecx
 	xor eax, eax 
 	
 	loop5: ; div 10 
 		xor edx, edx
 		shl eax, 4
-		mov dl, [edi + ecx]
+		mov dl, [edi]
 		add al, dl
 		mov dh, 10
 		div dh ; ax / dh = al (ost ah)
-		mov [edi + ecx], al
+		mov [edi], al
 		mov al, ah
 		mov ah, 0
-		
-		push eax
-		push int_format
-		call _printf
-		add esp, 8
-		
-		cmp ecx, 0
+		cmp edi, esi
 		je end_loop5
-		dec ecx
+		inc edi
 		jmp loop5
 		
 	end_loop5:
-		add al, '0'
-		mov [buffer2 + ebx], al
+		mov ebx, [esp] ; address of position
+		mov [ebx], al
 		inc ebx
-		cmp ebx, 50
+		mov [esp], ebx
+		mov eax, [esp + 4] ; end of buff
+		cmp ebx, eax
 		jne loop6
-
-end_of_decoding: ;deleting trailing zeros		
-	push buffer2
-	push str_format
-	call _printf
-	add esp, 4
 	
+	add esp, 12
+	mov edi, buffer2	
 	mov ecx, 49
+	
+end_of_decoding: ;deleting trailing zeros		
 	mov al, [edi + ecx]
 	cmp al, 0
 	jne found_pos_not_zero
@@ -262,6 +247,11 @@ loop7:
 	jmp loop7
 	
 end_loop7:
+	pusha
+	push buffer3
+	push str_format
+	call _printf
+	add esp, 8
+	popa
 	
-	
-	ret ; main ret
+ 	ret ; main ret
