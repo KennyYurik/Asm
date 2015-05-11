@@ -127,6 +127,7 @@ loop1:
 	cmp ecx, 33
 	je _print_err
 	xor eax, eax
+	xor ebx, ebx
 	mov al, [edi + ecx]
 	cmp al, 0
 	je end_loop1
@@ -148,7 +149,7 @@ this_is_letter:
 	mov [edi + ecx], bl
 	inc ecx
 	jmp loop1
-	
+	;-----------------------------------100% works
 end_loop1: ; length in ecx
 	cmp ecx, 32
 	jne not_dopcode
@@ -188,10 +189,8 @@ not_dopcode: ; now decode from hex to dec. length = ecx
 	dec ecx
 	mov esi, edi
 	add esi, ecx ; hex is [edi...esi]
-	push edi ; old begin
-	lea eax, [buffer2 + 50]
-	push eax ; end of buffer2
-	push buffer2
+	push edi
+	xor ebx, ebx	
 	
 loop6:
 	; al - ostatok
@@ -199,9 +198,10 @@ loop6:
 	xor eax, eax 
 	
 	loop5: ; div 10 
+		
 		xor edx, edx
 		shl eax, 4
-		mov dl, [edi]
+		mov dl, [edi]		
 		add al, dl
 		mov dh, 10
 		div dh ; ax / dh = al (ost ah)
@@ -214,15 +214,13 @@ loop6:
 		jmp loop5
 		
 	end_loop5:
-		mov ebx, [esp] ; address of position
-		mov [ebx], al
+		mov [buffer2 + ebx], al
 		inc ebx
-		mov [esp], ebx
-		mov eax, [esp + 4] ; end of buff
-		cmp ebx, eax
+		cmp ebx, 50
+		mov edi, [esp]
 		jne loop6
 	
-	add esp, 12
+	pop edi
 	mov edi, buffer2	
 	mov ecx, 49
 	
