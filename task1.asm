@@ -1,10 +1,11 @@
-extern _puts, _printf, _exit, _malloc
+extern _puts, _printf, _exit
 
 section .data
 	error_str db "error", 10, 0
 	buffer1 times 32 db 0
-	buffer2 times 50 db 0
-	buffer3 times 50 db 0
+	buffer2 times 51 db 0
+	buffer3 times 51 db 0
+	trailing db 0
 	sign db 0
 	length db 0
 	flags db 0000b
@@ -12,8 +13,9 @@ section .data
 	; XX - sign of positive, 00 - nothing, 01 - ' ', 11 - '+'
 	; Y - fill char, 0 - ' ', 1 - '0'
 	; Z - align, 0 - right, 1 - left
-	str_format db "this->%s<-this", 0
+	str_format db "%s", 0
 	int_format db "%d ", 0
+	char_format db "%c", 0
 section .text
 global _main
 
@@ -73,7 +75,8 @@ set_minus_flag:
 	mov ah, al
 	and ah, 10b
 	shr ah, 1
-	xor al, ah
+	xor ah, 1
+	or al, ah
 	mov [flags], al
 	jmp end_read_flags
 	
@@ -185,7 +188,6 @@ loop3:
 	jmp loop3
 	
 not_dopcode: ; now decode from hex to dec. length = ecx
-	; move out hex to buffer1
 	dec ecx
 	mov esi, edi
 	add esi, ecx ; hex is [edi...esi]
@@ -228,11 +230,14 @@ end_of_decoding: ;deleting trailing zeros
 	mov al, [edi + ecx]
 	cmp al, 0
 	jne found_pos_not_zero
+	cmp ecx, 0
+	je found_pos_not_zero
 	dec ecx
 	jmp end_of_decoding
 	
 found_pos_not_zero:
 	xor ebx, ebx
+	push ecx
 	
 loop7:
 	mov al, [edi + ecx]
@@ -244,7 +249,59 @@ loop7:
 	inc ebx
 	jmp loop7
 	
-end_loop7:
+end_loop7: ; [esp] - length of converted string - 1
+	pop ecx
+	inc ecx
+	; let's add sign
+	xor eax, eax
+	mov al, [sign]
+	xor ebx, ebx
+	mov bl, [flags]
+	and bl, 1100b
+	or al, bl
+	jz positive_no_sign
+	; set sign
+	xor eax, eax
+	mov al, [sign]
+	cmp al, 0
+	jne set_minus_sign
+	; set plus sign
+	xor eax, eax
+	mov al, [flags]
+	and al, 1000b
+	cmp al, 0
+	je set_space_plus_sign
+	mov al, '+'
+	mov [sign], al
+	jmp check_align
+	
+set_space_plus_sign:
+	mov al, '_'
+	mov [sign], al
+	jmp check_align
+	
+set_minus_sign:
+	mov al, '-'
+	mov [sign], al
+
+check_align:	
+	; check align
+	xor eax, eax
+	mov al, [flags]
+	and al, 1
+	cmp al, 1
+	jne right_align_with_sign
+	; left align
+	xor eax, eax
+	mov al, [sign]
+	
+	pusha
+	push eax
+	push char_format
+	call _printf
+	add esp, 8
+	popa
+	
 	pusha
 	push buffer3
 	push str_format
@@ -252,4 +309,198 @@ end_loop7:
 	add esp, 8
 	popa
 	
+	xor eax, eax
+	mov al, [length]
+	sub eax, ecx
+	dec eax
+	
+	pusha
+	push eax
+	xor ebx, ebx
+	mov bl, '_'
+	push ebx
+	call _printchars
+	add esp, 8
+	popa
+	jmp main_end
+	
+right_align_with_sign:
+	
+	xor eax, eax ; compute length of trailing
+	mov al, [length]
+	sub eax, ecx
+	dec eax	
+	mov edi, eax
+	
+	
+	xor eax, eax
+	mov al, [flags]
+	and al, 10b
+	cmp al, 0	
+	jne right_align_sign_zeros
+	; spaces
+	
+	pusha
+	push edi
+	xor ebx, ebx
+	mov bl, '_'
+	push ebx
+	call _printchars
+	add esp, 8
+	popa
+	
+	
+	xor eax, eax
+	mov al, [sign]
+	pusha
+	push eax
+	push char_format
+	call _printf
+	add esp, 8
+	popa
+	
+	pusha
+	push buffer3
+	push str_format
+	call _printf
+	add esp, 8
+	popa
+	jmp main_end
+	
+right_align_sign_zeros:
+	
+	xor eax, eax
+	mov al, [sign]
+	pusha
+	push eax
+	push char_format
+	call _printf
+	add esp, 8
+	popa
+	
+	pusha
+	push edi
+	xor ebx, ebx
+	mov bl, '0'
+	push ebx
+	call _printchars
+	add esp, 8
+	popa
+	
+	
+	pusha
+	push buffer3
+	push str_format
+	call _printf
+	add esp, 8
+	popa
+	jmp main_end
+	
+	
+	
+	
+positive_no_sign:
+	
+check_align_positive:	
+	; check align
+	xor eax, eax
+	mov al, [flags]
+	and al, 1
+	cmp al, 1
+	jne right_align_positive
+	; left align
+	pusha
+	push buffer3
+	push str_format
+	call _printf
+	add esp, 8
+	popa
+	
+	xor eax, eax
+	mov al, [length]
+	sub eax, ecx
+	
+	pusha
+	push eax
+	xor ebx, ebx
+	mov bl, '_'
+	push ebx
+	call _printchars
+	add esp, 8
+	popa
+	jmp main_end
+	
+right_align_positive:
+	
+	xor eax, eax ; compute length of trailing
+	mov al, [length]
+	sub eax, ecx
+	mov edi, eax
+	
+	xor eax, eax
+	mov al, [flags]
+	and al, 10b
+	cmp al, 0	
+	jne right_align_positive_zeros
+	; spaces
+	
+	pusha
+	push edi
+	xor ebx, ebx
+	mov bl, '_'
+	push ebx
+	call _printchars
+	add esp, 8
+	popa
+	
+	pusha
+	push buffer3
+	push str_format
+	call _printf
+	add esp, 8
+	popa
+	jmp main_end
+	
+right_align_positive_zeros:
+	
+	pusha
+	push edi
+	xor ebx, ebx
+	mov bl, '0'
+	push ebx
+	call _printchars
+	add esp, 8
+	popa
+	
+	
+	pusha
+	push buffer3
+	push str_format
+	call _printf
+	add esp, 8
+	popa
+	jmp main_end
+
+main_end:
  	ret ; main ret
+	
+_printchars:
+	mov eax, [esp + 4]
+	mov ecx, [esp + 8]
+	pusha
+	
+_loop_print:
+	cmp ecx, 0
+	jle end_loop_printchar
+	pusha
+	push eax
+	push char_format
+	call _printf
+	add esp, 8
+	popa
+	dec ecx
+	jmp _loop_print
+	
+end_loop_printchar:	
+	popa	
+	ret
